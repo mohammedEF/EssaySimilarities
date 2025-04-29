@@ -5,6 +5,7 @@ from nltk import pos_tag
 from nltk.corpus import stopwords
 import spacy
 import pandas as pd
+import pickle
 # Load spaCy model
 try:
     nlp = spacy.load('en_core_web_sm')
@@ -77,5 +78,9 @@ def preprocess_dataset(df):
 
 
 
-df = pd.read_csv('C:/Users/PRECISION 5550/Desktop/Essays Project/dataset/combined_processed.csv')
-preprocess_dataset(df)
+df = pd.read_csv('.../combined_processed.csv')
+preprocessed = preprocess_dataset(df)
+
+
+with open(".../preprocessed.pkl", "wb") as f:
+    pickle.dump(preprocessed, f)
