@@ -82,12 +82,16 @@ def analyze_lexical_features(preprocessed):
         # Save overall results
         results[period]['ttr_mean'] = np.mean(ttr_scores) if ttr_scores else 0
         results[period]['ttr_std'] = np.std(ttr_scores) if ttr_scores else 0
+        results[period]['ttr_scores'] = ttr_scores if ttr_scores else 0
         results[period]['mtld_mean'] = np.mean(mtld_scores) if mtld_scores else 0
         results[period]['mtld_std'] = np.std(mtld_scores) if mtld_scores else 0
+        results[period]['mtld_scores'] = mtld_scores if mtld_scores else 0
         results[period]['vocab_richness_mean'] = np.mean(vocab_richness) if vocab_richness else 0
         results[period]['vocab_richness_std'] = np.std(vocab_richness) if vocab_richness else 0
+        results[period]['vocab_richness'] = vocab_richness if vocab_richness else 0
         results[period]['mean_length'] = np.mean(essay_lengths) if essay_lengths else 0
         results[period]['length_std'] = np.std(essay_lengths) if essay_lengths else 0
+        results[period]['essay_lengths'] = essay_lengths if essay_lengths else 0
         
         # Save bucketed results (controlled for length)
         results[period]['length_controlled'] = {}
@@ -125,8 +129,9 @@ with open("C:/Users/PRECISION 5550/Desktop/Essays Project/dataset/preprocessed.p
     preprocessed = pickle.load(f)
 
 results = analyze_lexical_features(preprocessed)
+#print(results)
 
-
+# visualizing results _______________________________________________________________________________________________________________________________________________________
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
@@ -218,3 +223,115 @@ plt.bar(['Pre-GPT', 'Post-GPT'], length_data, yerr=std_data,
 plt.ylabel('Mean Length (chars)')
 plt.title('Text Length Comparison with Std Dev')
 plt.show()
+
+
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.stats import ttest_ind
+from statsmodels.stats.proportion import proportions_ztest
+import scipy.stats as stats
+
+# Extract data from results
+pre_gpt = results['pre_gpt']
+post_gpt = results['post_gpt']
+
+# 1. TTR Test (Welch's t-test for unequal variances)
+ttr_pre = pre_gpt['ttr_scores']
+ttr_post = post_gpt['ttr_scores']
+
+
+# normality check before deciding the statistical test ___________________________________________________________________________________________________
+
+from statsmodels.graphics.gofplots import qqplot
+def check_normality(data, name):
+    """Check normality with statistical tests and QQ-plot"""
+    # Statistical tests
+    shapiro_stat, shapiro_p = stats.shapiro(data)
+    ks_stat, ks_p = stats.kstest(data, 'norm')
+    
+    # QQ-plot
+    plt.figure(figsize=(12, 4))
+    plt.subplot(1, 2, 1)
+    qqplot(data, line='s', ax=plt.gca())
+    plt.title(f'QQ-plot for {name}')
+    
+    # Histogram
+    plt.subplot(1, 2, 2)
+    plt.hist(data, bins=30, density=True, alpha=0.6)
+    xmin, xmax = plt.xlim()
+    x = np.linspace(xmin, xmax, 100)
+    p = stats.norm.pdf(x, np.mean(data), np.std(data))
+    plt.plot(x, p, 'k', linewidth=2)
+    plt.title(f'Distribution of {name}')
+    
+    plt.tight_layout()
+    plt.show()
+    
+    return {
+        'shapiro': (shapiro_stat, shapiro_p),
+        'ks': (ks_stat, ks_p)
+    }
+
+# Check normality for pre-GPT
+print("=== Pre-GPT Normality Check ===")
+pre_norm = check_normality(np.array(ttr_pre), "Pre-GPT TTR")
+
+# Check normality for post-GPT
+print("\n=== Post-GPT Normality Check ===")
+post_norm = check_normality(np.array(ttr_post), "Post-GPT TTR")
+
+# Interpret results
+alpha = 0.05
+print(f"\nNormality Test Results (α = {alpha}):")
+print("Pre-GPT:")
+print(f"  Shapiro-Wilk: p = {pre_norm['shapiro'][1]:.3e} {'(Normal)' if pre_norm['shapiro'][1] > alpha else '(Non-normal)'}")
+print(f"  Kolmogorov-Smirnov: p = {pre_norm['ks'][1]:.3e} {'(Normal)' if pre_norm['ks'][1] > alpha else '(Non-normal)'}")
+
+print("\nPost-GPT:")
+print(f"  Shapiro-Wilk: p = {post_norm['shapiro'][1]:.3e} {'(Normal)' if post_norm['shapiro'][1] > alpha else '(Non-normal)'}")
+print(f"  Kolmogorov-Smirnov: p = {post_norm['ks'][1]:.3e} {'(Normal)' if post_norm['ks'][1] > alpha else '(Non-normal)'}")
+
+''' we will go with non-parametric Mann-Whitney U test as the distribution shows non-normality '''
+
+u_stat, p_mannwhitney = stats.mannwhitneyu(ttr_pre, ttr_post)
+print(f"Mann-Whitney U: U = {u_stat:.0f}, p = {p_mannwhitney}")
+#______________________________________________________________________________________________________________________________________________________
+
+
+# 2. Academic Word Usage (Two-proportion z-test)
+total_words_pre = sum(pre_gpt['essay_lengths'])
+total_words_post = sum(post_gpt['essay_lengths'])
+
+academic_words_pre = pre_gpt['academic_word_ratio'] * total_words_pre
+academic_words_post = post_gpt['academic_word_ratio'] * total_words_post
+
+z_academic, p_academic = proportions_ztest(
+    [academic_words_pre, academic_words_post],
+    [total_words_pre, total_words_post],
+    alternative='two-sided'
+)
+
+# 3. Hapax Legomena (Two-proportion z-test)
+hapax_pre = pre_gpt['hapax_percentage'] * total_words_pre
+hapax_post = post_gpt['hapax_percentage'] * total_words_post
+
+z_hapax, p_hapax = proportions_ztest(
+    [hapax_pre, hapax_post],
+    [total_words_pre, total_words_post],
+    alternative='two-sided'
+)
+
+
+# Print results
+print(f"""
+Statistical Significance Results:
+---------------------------------
+
+2. Academic Word Usage:
+   z = {z_academic:.2f}, p = {p_academic} {'***' if p_academic < 0.001 else ''}
+
+3. Hapax Legomena:
+   z = {z_hapax:.2f}, p = {p_hapax} {'***' if p_hapax < 0.001 else ''}
+
+""")
+
