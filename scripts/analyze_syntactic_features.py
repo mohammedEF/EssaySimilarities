@@ -52,8 +52,12 @@ def analyze_syntactic_features(preprocessed):
         # Aggregate results
         results[period]['mean_sentence_length'] = np.mean(sent_lengths) if sent_lengths else 0
         results[period]['std_sentence_length'] = np.std(sent_lengths) if sent_lengths else 0
+        results[period]['sent_lengths'] = sent_lengths if sent_lengths else 0
         results[period]['mean_clauses_per_sent'] = np.mean(clauses_per_sent) if clauses_per_sent else 0
+        results[period]['clauses_per_sent'] = clauses_per_sent if clauses_per_sent else 0
         results[period]['mean_subordination_ratio'] = np.mean(subordination_ratios) if subordination_ratios else 0
+        results[period]['subordination_ratios'] = subordination_ratios if subordination_ratios else 0
+
         
         # Aggregate POS distributions
         all_pos = {}
@@ -74,7 +78,10 @@ with open("C:/Users/PRECISION 5550/Desktop/Essays Project/dataset/preprocessed.p
 
 results = analyze_syntactic_features(preprocessed)
 
-print(results)
+# print(results)
+
+
+# visualization _____________________________________________________________________________________________________________________________________________________________________
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -132,3 +139,67 @@ plot_sentence_complexity()
 plot_subordination()
 plot_pos_distribution('pre')
 plot_pos_distribution('post')
+
+
+
+# statistical validation___________________________________________________________________________________________________________________________________
+
+
+import numpy as np
+from scipy import stats
+import matplotlib.pyplot as plt
+
+def perform_statistical_analysis(results):
+    metrics = ['sent_lengths', 'clauses_per_sent', 'subordination_ratios']
+    
+    for metric in metrics:
+        print(f"Analyzing {metric.replace('_', ' ').title()}...")
+        
+        # Extract data
+        pre_data = np.array(results['pre_gpt'][metric])
+        post_data = np.array(results['post_gpt'][metric])
+        
+        # Check sample sizes
+        n_pre = len(pre_data)
+        n_post = len(post_data)
+        print(f"  Pre-GPT N = {n_pre}, Post-GPT N = {n_post}")
+
+        # Strategy for large datasets:
+        if n_pre > 5000 or n_post > 5000:
+            print("  Large sample detected - using non-parametric test directly")
+            stat, p = stats.mannwhitneyu(pre_data, post_data)
+            test_name = "Mann-Whitney U test"
+        else:
+            # Normality check only for smaller samples
+            _, pre_p = stats.shapiro(pre_data)
+            _, post_p = stats.shapiro(post_data)
+            print(f"  Pre-GPT Normality p-value: {pre_p:.4f}")
+            print(f"  Post-GPT Normality p-value: {post_p:.4f}")
+            
+            if pre_p > 0.05 and post_p > 0.05:
+                stat, p = stats.ttest_ind(pre_data, post_data)
+                test_name = "Independent t-test"
+            else:
+                stat, p = stats.mannwhitneyu(pre_data, post_data)
+                test_name = "Mann-Whitney U test"
+
+        print(f"  Test Used: {test_name}")
+        print(f"  p-value: {p:.4f}")
+        if p < 0.05:
+            print("  **Significant difference detected**")
+        else:
+            print("  No significant difference")
+        print("\n" + "-"*50 + "\n")
+
+# plot normality 
+def plot_qq(data, title):
+    plt.figure()
+    stats.probplot(data, plot=plt)
+    plt.title(f"Q-Q Plot for {title}")
+    plt.show()
+
+
+perform_statistical_analysis(results)
+
+
+plot_qq(results['post_gpt']['sent_lengths'], "Post-GPT Sentence Lengths")
